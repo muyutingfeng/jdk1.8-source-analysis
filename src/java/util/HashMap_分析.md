@@ -1,3 +1,7 @@
+---
+typora-root-url: ../../../note/doc
+---
+
 ## 1、整体结构图
 
 ## 1、前言
@@ -16,7 +20,7 @@ Map 这样的 `Key Value` 在软件开发中是非常经典的结构，常用于
 
 1.7 中的数据结构图：
 
-![](../../../note/doc/java.util.HashMap_hashmap internal structure.png)
+![java.util.HashMap_hashmap internal structure](/java.util.HashMap_hashmap internal structure.png)
 
 
 
