@@ -6,13 +6,7 @@
 
 ### 1、hashmap1.7 结构
 
-<img src="https://github.com/muyutingfeng/jdk1.8-source-analysis/raw/master/note/doc/java.util.HashMap_hashmap_internal_structure.png?raw=true" alt="java.util.HashMap_hashmap internal structure" style="zoom: 50%;" />
-
-
-
-![Java7HashMap](https://github.com/muyutingfeng/jdk1.8-source-analysis/raw/master/note/doc/java.util.HashMap/Java7HashMap.png?raw=true)
-
-
+<img src="https://github.com/muyutingfeng/jdk1.8-source-analysis/raw/master/note/doc/java.util.HashMap/Java7HashMap.png?raw=true" alt="Java7HashMap" style="zoom: 50%;" />
 
 
 
@@ -265,13 +259,25 @@ HashMap 里面是一个数组，然后数组中每个元素是一个单向链表
 
 ## Base 1.8
 
-当 Hash 冲突严重时，在桶上形成的链表会变的越来越长，这样在查询时的效率就会越来越低；时间复杂度为 `O(N)`。
+Java8 对 HashMap 进行了一些修改，最大的不同就是利用了红黑树，所以其由 数组+链表+红黑树 组成。
 
-因此 1.8 中重点优化了这个查询效率。
+根据 Java7 HashMap 的介绍，我们知道，查找的时候，根据 hash 值我们能够快速定位到数组的具体下标，但是之后的话，需要顺着链表一个个比较下去才能找到我们需要的，时间复杂度取决于链表的长度，为 O(n)。
 
-### hashmap1.8 结构图
+为了降低这部分的开销，在 Java8 中，当链表中的元素超过了 8 个以后，会将链表转换为红黑树，在这些位置进行查找的时候可以降低时间复杂度为 O(logN)。
 
-<img src="https://github.com/muyutingfeng/jdk1.8-source-analysis/raw/master/note/doc/java.util.HashMap_hashmap_base_on_jdk8.png?raw=true" alt="java.util.HashMap_hashmap base on jdk1.8.png" style="zoom:50%;" />
+### 1、hashmap1.8 结构图
+
+<img src="https://github.com/muyutingfeng/jdk1.8-source-analysis/raw/master/note/doc/java.util.HashMap/Java8HashMap.png?raw=true" alt="Java8HashMap" style="zoom:50%;" />
+
+> *注意，上图是示意图，主要是描述结构，不会达到这个状态的，因为这么多数据的时候早就扩容了。*
+
+下面，我们还是用代码来介绍吧，个人感觉，Java8 的源码可读性要差一些，不过精简一些。
+
+Java7 中使用 Entry 来代表每个 HashMap 中的数据节点，Java8 中使用 Node，基本没有区别，都是 key，value，hash 和 next 这四个属性，不过，Node 只能用于链表的情况，红黑树的情况需要使用 TreeNode。
+
+我们根据数组元素中，第一个节点数据类型是 Node 还是 TreeNode 来判断该位置下是链表还是红黑树的。
+
+
 
 ### 核心成员变量
 
@@ -395,7 +401,120 @@ HashMap 里面是一个数组，然后数组中每个元素是一个单向链表
     }
 ```
 
+### resize数组扩容
+
+```java
+    /**
+     * Initializes or doubles table size.  If null, allocates in
+     * accord with initial capacity target held in field threshold.
+     * Otherwise, because we are using power-of-two expansion, the
+     * elements from each bin must either stay at same index, or move
+     * with a power of two offset in the new table.
+     *
+     * @return the table
+     */
+
+    final Node<K,V>[] resize() {
+        Node<K,V>[] oldTab = table;
+        int oldCap = (oldTab == null) ? 0 : oldTab.length;
+        int oldThr = threshold;
+        int newCap, newThr = 0;
+        // 对应数组扩容
+        if (oldCap > 0) {
+            if (oldCap >= MAXIMUM_CAPACITY) {
+                threshold = Integer.MAX_VALUE;
+                return oldTab;
+            }
+            // 将数组大小扩大一倍
+            else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
+                    oldCap >= DEFAULT_INITIAL_CAPACITY)
+                // 将阈值扩大一倍
+                newThr = oldThr << 1; // double threshold
+        }
+        // 对应使用 new HashMap(int initialCapacity) 初始化后，第一次 put 的时候
+        else if (oldThr > 0)
+            newCap = oldThr;
+        // 对应使用 new HashMap() 初始化后，第一次 put 的时候
+        else {
+            newCap = DEFAULT_INITIAL_CAPACITY;
+            newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
+        }
+
+        if (newThr == 0) {
+            float ft = (float)newCap * loadFactor;
+            newThr = (newCap < MAXIMUM_CAPACITY && ft < (float)MAXIMUM_CAPACITY ?
+                    (int)ft : Integer.MAX_VALUE);
+        }
+        threshold = newThr;
+
+        // 用新的数组大小初始化新的数组
+        Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
+        // 如果是初始化数组，到这里就结束了，返回 newTab 即可
+        table = newTab;
+
+        if (oldTab != null) {
+            // 开始遍历原数组，进行数据迁移。
+            for (int j = 0; j < oldCap; ++j) {
+                Node<K,V> e;
+                if ((e = oldTab[j]) != null) {
+                    oldTab[j] = null;
+                    // 如果该数组位置上只有单个元素，那就简单了，简单迁移这个元素就可以了
+                    if (e.next == null)
+                        newTab[e.hash & (newCap - 1)] = e;
+                        // 如果是红黑树，具体我们就不展开了
+                    else if (e instanceof TreeNode)
+                        ((TreeNode<K,V>)e).split(this, newTab, j, oldCap);
+                    else {
+                        //第三种情况：桶位已经形成链表
+                        //低位链表：存放在扩容之后的数组的下标的位置，与当前数组的下标位置一致
+                        Node<K,V> loHead = null, loTail = null;
+                        //高位链表：存放在扩容之后的数组的下标的位置，为当前数组下标位置 + 扩容之前的数组的长度
+                        Node<K,V> hiHead = null, hiTail = null;
+
+                        Node<K,V> next;
+                        do {
+                            next = e.next;
+                            if ((e.hash & oldCap) == 0) {
+                                if (loTail == null)
+                                    loHead = e;
+                                else
+                                    loTail.next = e;
+                                loTail = e;
+                            }
+                            else {
+                                if (hiTail == null)
+                                    hiHead = e;
+                                else
+                                    hiTail.next = e;
+                                hiTail = e;
+                            }
+                        } while ((e = next) != null);
+                        if (loTail != null) {
+                            loTail.next = null;
+                            // 第一条链表
+                            newTab[j] = loHead;
+                        }
+                        if (hiTail != null) {
+                            hiTail.next = null;
+                            // 第二条链表的新的位置是 j + oldCap，这个很好理解
+                            newTab[j + oldCap] = hiHead;
+                        }
+                    }
+                }
+            }
+        }
+        return newTab;
+    }
+```
+
+
+
 ### get方法
+
+1. 计算 key 的 hash 值，根据 hash 值找到对应数组下标: hash & (length-1)
+2. 判断数组该位置处的元素是否刚好就是我们要找的，如果不是，走第三步
+3. 判断该元素类型是否是 TreeNode，如果是，用红黑树的方法取数据，如果不是，走第四步
+4. 遍历链表，直到找到相等(==或equals)的 key
 
 ```java
 		public V get(Object key) {

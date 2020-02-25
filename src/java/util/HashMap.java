@@ -693,50 +693,64 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      *
      * @return the table
      */
+
     final Node<K,V>[] resize() {
         Node<K,V>[] oldTab = table;
         int oldCap = (oldTab == null) ? 0 : oldTab.length;
         int oldThr = threshold;
         int newCap, newThr = 0;
+        // 对应数组扩容
         if (oldCap > 0) {
             if (oldCap >= MAXIMUM_CAPACITY) {
                 threshold = Integer.MAX_VALUE;
                 return oldTab;
             }
+            // 将数组大小扩大一倍
             else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
-                     oldCap >= DEFAULT_INITIAL_CAPACITY)
+                    oldCap >= DEFAULT_INITIAL_CAPACITY)
+                // 将阈值扩大一倍
                 newThr = oldThr << 1; // double threshold
         }
-        else if (oldThr > 0) // initial capacity was placed in threshold
+        // 对应使用 new HashMap(int initialCapacity) 初始化后，第一次 put 的时候
+        else if (oldThr > 0)
             newCap = oldThr;
-        else {               // zero initial threshold signifies using defaults
+        // 对应使用 new HashMap() 初始化后，第一次 put 的时候
+        else {
             newCap = DEFAULT_INITIAL_CAPACITY;
             newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
         }
+
         if (newThr == 0) {
             float ft = (float)newCap * loadFactor;
             newThr = (newCap < MAXIMUM_CAPACITY && ft < (float)MAXIMUM_CAPACITY ?
-                      (int)ft : Integer.MAX_VALUE);
+                    (int)ft : Integer.MAX_VALUE);
         }
         threshold = newThr;
-        @SuppressWarnings({"rawtypes","unchecked"})
-            Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
+
+        // 用新的数组大小初始化新的数组
+        Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
+        // 如果是初始化数组，到这里就结束了，返回 newTab 即可
         table = newTab;
+
         if (oldTab != null) {
+            // 开始遍历原数组，进行数据迁移。
             for (int j = 0; j < oldCap; ++j) {
                 Node<K,V> e;
                 if ((e = oldTab[j]) != null) {
                     oldTab[j] = null;
+                    // 如果该数组位置上只有单个元素，那就简单了，简单迁移这个元素就可以了
                     if (e.next == null)
                         newTab[e.hash & (newCap - 1)] = e;
+                        // 如果是红黑树，具体我们就不展开了
                     else if (e instanceof TreeNode)
                         ((TreeNode<K,V>)e).split(this, newTab, j, oldCap);
-                    else { // preserve order
+                    else {
                         //第三种情况：桶位已经形成链表
                         //低位链表：存放在扩容之后的数组的下标的位置，与当前数组的下标位置一致
                         Node<K,V> loHead = null, loTail = null;
                         //高位链表：存放在扩容之后的数组的下标的位置，为当前数组下标位置 + 扩容之前的数组的长度
                         Node<K,V> hiHead = null, hiTail = null;
+
                         Node<K,V> next;
                         do {
                             next = e.next;
@@ -757,10 +771,12 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                         } while ((e = next) != null);
                         if (loTail != null) {
                             loTail.next = null;
+                            // 第一条链表
                             newTab[j] = loHead;
                         }
                         if (hiTail != null) {
                             hiTail.next = null;
+                            // 第二条链表的新的位置是 j + oldCap，这个很好理解
                             newTab[j + oldCap] = hiHead;
                         }
                     }
