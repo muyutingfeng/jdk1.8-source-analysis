@@ -713,7 +713,10 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                     else if (e instanceof TreeNode)
                         ((TreeNode<K,V>)e).split(this, newTab, j, oldCap);
                     else { // preserve order
+                        //第三种情况：桶位已经形成链表
+                        //低位链表：存放在扩容之后的数组的下标的位置，与当前数组的下标位置一致
                         Node<K,V> loHead = null, loTail = null;
+                        //高位链表：存放在扩容之后的数组的下标的位置，为当前数组下标位置 + 扩容之前的数组的长度
                         Node<K,V> hiHead = null, hiTail = null;
                         Node<K,V> next;
                         do {
